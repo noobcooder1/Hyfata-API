@@ -2,12 +2,13 @@
 
 ## 📧 개요
 
-Hyfata REST API는 **POP3/SMTP 방식의 커스텀 메일 서버**를 사용합니다.
+Hyfata REST API는 **IMAP/SMTP 방식의 커스텀 메일 서버**를 사용합니다.
 
 **메일 서버 정보:**
 - **Host**: `mail.hyfata.kr`
-- **SMTP Port**: 587
-- **Protocol**: POP3/SMTP
+- **SMTP Port**: 587 (발신용)
+- **IMAP Port**: 993 (수신용, SSL)
+- **Protocol**: IMAP/SMTP
 - **Sender Email**: `noreply@hyfata.kr`
 - **Authentication**: 사용자명/비밀번호
 
@@ -18,20 +19,26 @@ Hyfata REST API는 **POP3/SMTP 방식의 커스텀 메일 서버**를 사용합�
 ### application.properties (프로덕션)
 
 ```properties
-# Mail Configuration (POP3/SMTP - mail.hyfata.kr)
+# Mail Configuration (IMAP/SMTP - mail.hyfata.kr)
 spring.mail.enabled=true
 spring.mail.host=mail.hyfata.kr
 spring.mail.port=587
 spring.mail.username=${MAIL_USERNAME:noreply@hyfata.kr}
 spring.mail.password=${MAIL_PASSWORD:your-password}
 
-# SMTP 설정
+# SMTP 설정 (발신용)
 spring.mail.properties.mail.smtp.auth=true
-spring.mail.properties.mail.smtp.starttls.enable=false
-spring.mail.properties.mail.smtp.starttls.required=false
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
 spring.mail.properties.mail.smtp.connectiontimeout=5000
 spring.mail.properties.mail.smtp.timeout=5000
 spring.mail.properties.mail.smtp.writetimeout=5000
+
+# IMAP 설정 (수신용)
+# mail.imap.host=mail.hyfata.kr
+# mail.imap.port=993
+# mail.imap.ssl.enable=true
+# mail.imap.auth=true
 
 # 발송자 이메일
 spring.mail.from=noreply@hyfata.kr
@@ -60,9 +67,14 @@ environment:
 ### 1. TLS/SSL 설정
 
 ```properties
-# STARTTLS 비활성화 (POP3/SMTP는 일반적으로 TLS를 사용하지 않음)
-spring.mail.properties.mail.smtp.starttls.enable=false
-spring.mail.properties.mail.smtp.starttls.required=false
+# SMTP (발신)
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.starttls.required=true
+
+# IMAP (수신) - SSL 필수
+# mail.imap.ssl.enable=true
+# mail.imap.socketFactory.port=993
+# mail.imap.socketFactory.class=javax.net.ssl.SSLSocketFactory
 ```
 
 ### 2. 인증 정보 보호
@@ -152,7 +164,7 @@ User 생성 → DB 저장
     ↓
 EmailService.sendEmailVerificationEmail() (비동기)
     ↓
-메일 서버 (mail.hyfata.kr:587) 로 연결
+메일 서버 SMTP (mail.hyfata.kr:587) 로 연결
     ↓
 SMTP 인증 (noreply@hyfata.kr + 비밀번호)
     ↓
@@ -404,4 +416,41 @@ docker logs container-name | grep -i email
 
 - [Spring Mail 공식 문서](https://spring.io/guides/gs/sending-email/)
 - [Jakarta Mail API](https://jakarta.ee/specifications/mail/)
-- [SMTP 프로토콜](https://tools.ietf.org/html/rfc5321)
+- [SMTP 프로토콜 (RFC 5321)](https://tools.ietf.org/html/rfc5321)
+- [IMAP4 프로토콜 (RFC 3501)](https://tools.ietf.org/html/rfc3501)
+- [Spring Integration Mail Support](https://spring.io/projects/spring-integration)
+
+---
+
+## 📋 SMTP vs IMAP 비교
+
+| 기능 | SMTP | IMAP |
+|------|------|------|
+| **용도** | 이메일 발송 | 이메일 수신 |
+| **포트** | 587 (TLS) / 465 (SSL) | 993 (SSL) / 143 (STARTTLS) |
+| **SSL/TLS** | STARTTLS 권장 | SSL 필수 |
+| **상태** | Stateless | Stateful |
+| **현재 구현** | ✅ 활성화 | ⏸️ 선택적 |
+
+**현재 API는 이메일 "발송"만 하므로 SMTP만 필수입니다.**
+**IMAP은 메일함 읽기 등 추가 기능이 필요할 때 활성화하세요.**
+
+---
+
+## 🔧 IMAP 활성화 방법
+
+IMAP 기능이 필요한 경우 application.properties에서 다음 설정을 활성화하세요:
+
+```properties
+# IMAP 설정 활성화
+mail.imap.host=mail.hyfata.kr
+mail.imap.port=993
+mail.imap.ssl.enable=true
+mail.imap.auth=true
+mail.imap.socketFactory.port=993
+mail.imap.socketFactory.class=javax.net.ssl.SSLSocketFactory
+mail.imap.connectiontimeout=5000
+mail.imap.timeout=5000
+```
+
+**주의**: IMAP 클라이언트 라이브러리 (예: Spring Integration Mail)를 추가해야 합니다.
