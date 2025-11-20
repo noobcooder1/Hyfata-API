@@ -3,6 +3,7 @@ package kr.hyfata.rest.api.util;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import kr.hyfata.rest.api.entity.User;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -36,8 +37,14 @@ public class JwtUtil {
      */
     public String generateAccessToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put("email", userDetails.getUsername());
-        return createToken(claims, userDetails.getUsername(), jwtExpiration);
+
+        // UserDetails가 User 엔티티인 경우 실제 email 사용
+        String email = (userDetails instanceof User)
+            ? ((User) userDetails).getEmail()
+            : userDetails.getUsername();
+
+        claims.put("email", email);
+        return createToken(claims, email, jwtExpiration);
     }
 
     /**
@@ -45,7 +52,13 @@ public class JwtUtil {
      */
     public String generateRefreshToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
-        return createToken(claims, userDetails.getUsername(), refreshTokenExpiration);
+
+        // UserDetails가 User 엔티티인 경우 실제 email 사용
+        String email = (userDetails instanceof User)
+            ? ((User) userDetails).getEmail()
+            : userDetails.getUsername();
+
+        return createToken(claims, email, refreshTokenExpiration);
     }
 
     /**
