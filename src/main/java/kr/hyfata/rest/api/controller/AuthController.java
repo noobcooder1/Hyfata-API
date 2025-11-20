@@ -21,18 +21,14 @@ public class AuthController {
     private final AuthService authService;
 
     /**
-     * 회원가입 (레거시 - OAuth 2.0 대신 /oauth 엔드포인트 사용 권장)
+     * 회원가입
      * POST /api/auth/register
      *
-     * ⚠️ DEPRECATED: 이 엔드포인트는 레거시 API입니다.
-     * OAuth 2.0 Authorization Code Flow를 사용하세요:
-     * 1. GET /oauth/authorize
-     * 2. POST /oauth/login
-     * 3. POST /oauth/token
+     * 새로운 사용자 계정을 생성합니다.
+     * OAuth 2.0 로그인 전에 먼저 이 엔드포인트로 회원가입을 완료해야 합니다.
      */
     @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(@RequestBody RegisterRequest request) {
-        log.warn("⚠️ DEPRECATED: Direct /api/auth/register is called. Please use OAuth 2.0 flow instead (GET /oauth/authorize)");
         try {
             authService.register(request);
             Map<String, String> response = new HashMap<>();
