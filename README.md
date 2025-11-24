@@ -98,26 +98,26 @@ spring.datasource.password=your_password
 
 ## 📚 문서
 
-**모든 상세 문서는 [Wiki](https://github.com/najoan/Hyfata-RestAPI/wiki)에서 확인하세요:**
+**모든 상세 문서는 [Wiki](https://github.com/Hyfata/Hyfata-RestAPI/wiki)에서 확인하세요:**
 
 ### Getting Started
-- [Installation & Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Installation-&-Setup)
-- [Configuration & Environment Variables](https://github.com/najoan/Hyfata-RestAPI/wiki/Configuration-&-Environment-Variables)
-- [Database Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Database-Setup)
+- [Installation & Setup](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Installation-&-Setup)
+- [Configuration & Environment Variables](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Configuration-&-Environment-Variables)
+- [Database Setup](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Database-Setup)
 
 ### OAuth 2.0 Documentation
-- [OAuth 2.0 Authorization Code Flow](https://github.com/najoan/Hyfata-RestAPI/wiki/OAuth-2.0-Authorization-Code-Flow)
-- [PKCE Implementation (RFC 7636)](https://github.com/najoan/Hyfata-RestAPI/wiki/PKCE-Implementation)
-- [Implementation Summary](https://github.com/najoan/Hyfata-RestAPI/wiki/Implementation-Summary)
+- [OAuth 2.0 Authorization Code Flow](https://github.com/Hyfata/Hyfata-RestAPI/wiki/OAuth-2.0-Authorization-Code-Flow)
+- [PKCE Implementation (RFC 7636)](https://github.com/Hyfata/Hyfata-RestAPI/wiki/PKCE-Implementation)
+- [Implementation Summary](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Implementation-Summary)
 
 ### Authentication System
-- [API Authentication & JWT](https://github.com/najoan/Hyfata-RestAPI/wiki/API-Authentication-&-JWT)
-- [Authentication Implementation Details](https://github.com/najoan/Hyfata-RestAPI/wiki/Authentication-Implementation-Details)
+- [API Authentication & JWT](https://github.com/Hyfata/Hyfata-RestAPI/wiki/API-Authentication-&-JWT)
+- [Authentication Implementation Details](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Authentication-Implementation-Details)
 
 ### Infrastructure
-- [Database Schema & Guide](https://github.com/najoan/Hyfata-RestAPI/wiki/Database-Schema-&-Guide)
-- [Email Service & Configuration](https://github.com/najoan/Hyfata-RestAPI/wiki/Email-Service-&-Configuration)
-- [Mail Server Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Mail-Server-Setup)
+- [Database Schema & Guide](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Database-Schema-&-Guide)
+- [Email Service & Configuration](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Email-Service-&-Configuration)
+- [Mail Server Setup](https://github.com/Hyfata/Hyfata-RestAPI/wiki/Mail-Server-Setup)
 
 ---
 
