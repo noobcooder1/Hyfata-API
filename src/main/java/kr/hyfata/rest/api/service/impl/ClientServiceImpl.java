@@ -8,6 +8,7 @@ import kr.hyfata.rest.api.service.ClientService;
 import kr.hyfata.rest.api.util.TokenGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,19 +21,21 @@ public class ClientServiceImpl implements ClientService {
 
     private final ClientRepository clientRepository;
     private final TokenGenerator tokenGenerator;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public ClientResponse registerClient(ClientRegistrationRequest request) {
         // clientId와 clientSecret 생성
         String clientId = generateUniqueClientId();
         String clientSecret = tokenGenerator.generatePasswordResetToken();  // 긴 난수 토큰 사용
+        String hashedClientSecret = passwordEncoder.encode(clientSecret);  // BCrypt로 해싱
 
         // redirectUris를 쉼표로 구분된 문자열로 변환
         String redirectUrisStr = String.join(",", request.getRedirectUris());
 
         Client client = Client.builder()
                 .clientId(clientId)
-                .clientSecret(clientSecret)
+                .clientSecret(hashedClientSecret)  // 해싱된 값 저장
                 .name(request.getName())
                 .description(request.getDescription())
                 .frontendUrl(request.getFrontendUrl())
@@ -44,7 +47,8 @@ public class ClientServiceImpl implements ClientService {
         Client savedClient = clientRepository.save(client);
         log.info("Client registered: {} ({})", request.getName(), clientId);
 
-        return mapToResponse(savedClient);
+        // 생성 시에만 평문 clientSecret을 응답에 포함
+        return mapToResponseWithSecret(savedClient, clientSecret);
     }
 
     @Override
@@ -88,7 +92,7 @@ public class ClientServiceImpl implements ClientService {
     }
 
     /**
-     * Client 엔티티를 ClientResponse DTO로 변환
+     * Client 엔티티를 ClientResponse DTO로 변환 (clientSecret 제외)
      */
     private ClientResponse mapToResponse(Client client) {
         List<String> redirectUris = List.of(client.getRedirectUris().split(","));
@@ -96,7 +100,29 @@ public class ClientServiceImpl implements ClientService {
         return ClientResponse.builder()
                 .id(client.getId())
                 .clientId(client.getClientId())
-                .clientSecret(client.getClientSecret())
+                .clientSecret(null)  // clientSecret은 절대 반환하지 않음
+                .name(client.getName())
+                .description(client.getDescription())
+                .frontendUrl(client.getFrontendUrl())
+                .redirectUris(redirectUris)
+                .enabled(client.getEnabled())
+                .maxTokensPerUser(client.getMaxTokensPerUser())
+                .ownerEmail(client.getOwnerEmail())
+                .createdAt(client.getCreatedAt())
+                .updatedAt(client.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * Client 엔티티를 ClientResponse DTO로 변환 (생성 시에만 평문 clientSecret 포함)
+     */
+    private ClientResponse mapToResponseWithSecret(Client client, String plainClientSecret) {
+        List<String> redirectUris = List.of(client.getRedirectUris().split(","));
+
+        return ClientResponse.builder()
+                .id(client.getId())
+                .clientId(client.getClientId())
+                .clientSecret(plainClientSecret)  // 생성 시에만 평문 반환
                 .name(client.getName())
                 .description(client.getDescription())
                 .frontendUrl(client.getFrontendUrl())

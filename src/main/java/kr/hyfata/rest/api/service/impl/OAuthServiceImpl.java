@@ -14,6 +14,7 @@ import kr.hyfata.rest.api.util.TokenGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ public class OAuthServiceImpl implements OAuthService {
     private final JwtUtil jwtUtil;
     private final TokenGenerator tokenGenerator;
     private final PkceUtil pkceUtil;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
     public String generateAuthorizationCode(String clientId, String email, String redirectUri, String state) {
@@ -135,8 +137,13 @@ public class OAuthServiceImpl implements OAuthService {
         }
 
         // 6. Client Secret 검증
-        Client client = clientRepository.findByClientIdAndClientSecret(clientId, clientSecret)
+        Client client = clientRepository.findByClientId(clientId)
                 .orElseThrow(() -> new BadCredentialsException("Invalid client credentials"));
+
+        // BCrypt로 저장된 clientSecret과 비교
+        if (!passwordEncoder.matches(clientSecret, client.getClientSecret())) {
+            throw new BadCredentialsException("Invalid client credentials");
+        }
 
         if (!client.getEnabled()) {
             throw new BadCredentialsException("Client is disabled");
