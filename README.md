@@ -98,22 +98,26 @@ spring.datasource.password=your_password
 
 ## 📚 문서
 
-### 기본 가이드
-- **[OAUTH_CLIENT_GUIDE.md](./OAUTH_CLIENT_GUIDE.md)**: 클라이언트 등록 및 사용 방법
+**모든 상세 문서는 [Wiki](https://github.com/najoan/Hyfata-RestAPI/wiki)에서 확인하세요:**
 
-### 상세 가이드
-- **[OAUTH_2_AUTHORIZATION_CODE_FLOW.md](./OAUTH_2_AUTHORIZATION_CODE_FLOW.md)**: OAuth 2.0 완전 구현 가이드
-- **[OAUTH_IMPLEMENTATION_SUMMARY.md](./OAUTH_IMPLEMENTATION_SUMMARY.md)**: 구현 요약 및 아키텍처
-- **[PKCE_IMPLEMENTATION.md](./PKCE_IMPLEMENTATION.md)**: 🆕 PKCE (RFC 7636) 구현 가이드 - Flutter 앱 로그인 예제 포함
+### Getting Started
+- [Installation & Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Installation-&-Setup)
+- [Configuration & Environment Variables](https://github.com/najoan/Hyfata-RestAPI/wiki/Configuration-&-Environment-Variables)
+- [Database Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Database-Setup)
 
-### 인증 시스템
-- **[API_AUTHENTICATION.md](./API_AUTHENTICATION.md)**: JWT 및 인증 엔드포인트
-- **[AUTHENTICATION_IMPLEMENTATION.md](./AUTHENTICATION_IMPLEMENTATION.md)**: 인증 시스템 구현 세부사항
+### OAuth 2.0 Documentation
+- [OAuth 2.0 Authorization Code Flow](https://github.com/najoan/Hyfata-RestAPI/wiki/OAuth-2.0-Authorization-Code-Flow)
+- [PKCE Implementation (RFC 7636)](https://github.com/najoan/Hyfata-RestAPI/wiki/PKCE-Implementation)
+- [Implementation Summary](https://github.com/najoan/Hyfata-RestAPI/wiki/Implementation-Summary)
 
-### 기타 문서
-- **[DATABASE_GUIDE.md](./DATABASE_GUIDE.md)**: 데이터베이스 스키마
-- **[EMAIL_SERVICE_IMPROVEMENTS.md](./EMAIL_SERVICE_IMPROVEMENTS.md)**: 이메일 서비스
-- **[MAIL_SERVER_SETUP.md](./MAIL_SERVER_SETUP.md)**: 메일 서버 설정
+### Authentication System
+- [API Authentication & JWT](https://github.com/najoan/Hyfata-RestAPI/wiki/API-Authentication-&-JWT)
+- [Authentication Implementation Details](https://github.com/najoan/Hyfata-RestAPI/wiki/Authentication-Implementation-Details)
+
+### Infrastructure
+- [Database Schema & Guide](https://github.com/najoan/Hyfata-RestAPI/wiki/Database-Schema-&-Guide)
+- [Email Service & Configuration](https://github.com/najoan/Hyfata-RestAPI/wiki/Email-Service-&-Configuration)
+- [Mail Server Setup](https://github.com/najoan/Hyfata-RestAPI/wiki/Mail-Server-Setup)
 
 ---
 
