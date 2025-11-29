@@ -1,11 +1,13 @@
 package kr.hyfata.rest.api.service.impl;
 
+import jakarta.servlet.http.HttpServletRequest;
 import kr.hyfata.rest.api.dto.*;
 import kr.hyfata.rest.api.entity.User;
 import kr.hyfata.rest.api.repository.UserRepository;
 import kr.hyfata.rest.api.service.AuthService;
 import kr.hyfata.rest.api.service.ClientService;
 import kr.hyfata.rest.api.service.EmailService;
+import kr.hyfata.rest.api.service.SessionService;
 import kr.hyfata.rest.api.util.JwtUtil;
 import kr.hyfata.rest.api.util.TokenGenerator;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -28,8 +31,9 @@ public class AuthServiceImpl implements AuthService {
     private final TokenGenerator tokenGenerator;
     private final EmailService emailService;
     private final ClientService clientService;
+    private final SessionService sessionService;
 
-    @Value("${jwt.expiration:86400000}")
+    @Value("${jwt.expiration:900000}")
     private long jwtExpiration;
 
     @Value("${auth.2fa.expiration-minutes:10}")
@@ -74,7 +78,8 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public AuthResponse login(AuthRequest request) {
+    @Transactional
+    public AuthResponse login(AuthRequest request, HttpServletRequest httpRequest) {
         // 클라이언트 검증
         if (clientService.validateClient(request.getClientId()).isEmpty()) {
             throw new BadCredentialsException("Invalid or disabled client");
@@ -103,17 +108,21 @@ public class AuthServiceImpl implements AuthService {
             return AuthResponse.twoFactorRequired("Please check your email for the 2FA code");
         }
 
-        // 토큰 생성
-        String accessToken = jwtUtil.generateAccessToken(user);
+        // 토큰 생성 (JTI 포함)
+        JwtUtil.TokenResult tokenResult = jwtUtil.generateAccessTokenWithJti(user);
         String refreshToken = jwtUtil.generateRefreshToken(user);
+
+        // 세션 생성
+        sessionService.createSession(user, refreshToken, tokenResult.jti(), httpRequest);
 
         log.info("User logged in: {} (client: {})", user.getEmail(), request.getClientId());
 
-        return AuthResponse.success(accessToken, refreshToken, jwtExpiration);
+        return AuthResponse.success(tokenResult.token(), refreshToken, jwtExpiration);
     }
 
     @Override
-    public AuthResponse verifyTwoFactor(TwoFactorRequest request) {
+    @Transactional
+    public AuthResponse verifyTwoFactor(TwoFactorRequest request, HttpServletRequest httpRequest) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
 
@@ -130,29 +139,62 @@ public class AuthServiceImpl implements AuthService {
         user.setTwoFactorCodeExpiredAt(null);
         userRepository.save(user);
 
-        // 토큰 생성
-        String accessToken = jwtUtil.generateAccessToken(user);
+        // 토큰 생성 (JTI 포함)
+        JwtUtil.TokenResult tokenResult = jwtUtil.generateAccessTokenWithJti(user);
         String refreshToken = jwtUtil.generateRefreshToken(user);
+
+        // 세션 생성
+        sessionService.createSession(user, refreshToken, tokenResult.jti(), httpRequest);
 
         log.info("2FA verified for: {}", user.getEmail());
 
-        return AuthResponse.success(accessToken, refreshToken, jwtExpiration);
+        return AuthResponse.success(tokenResult.token(), refreshToken, jwtExpiration);
     }
 
     @Override
-    public AuthResponse refreshToken(RefreshTokenRequest request) {
+    @Transactional
+    public AuthResponse refreshToken(RefreshTokenRequest request, HttpServletRequest httpRequest) {
+        // JWT 서명 검증
         if (!jwtUtil.validateToken(request.getRefreshToken())) {
             throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        // 세션 검증 (DB)
+        if (!sessionService.validateSession(request.getRefreshToken())) {
+            throw new BadCredentialsException("Session is invalid or revoked");
         }
 
         String email = jwtUtil.extractEmail(request.getRefreshToken());
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BadCredentialsException("User not found"));
 
-        String newAccessToken = jwtUtil.generateAccessToken(user);
+        // 새 토큰 생성 (토큰 로테이션)
+        JwtUtil.TokenResult newTokenResult = jwtUtil.generateAccessTokenWithJti(user);
         String newRefreshToken = jwtUtil.generateRefreshToken(user);
 
-        return AuthResponse.success(newAccessToken, newRefreshToken, jwtExpiration);
+        // 기존 세션 무효화 + 새 세션 생성
+        String oldSessionHash = sessionService.hashToken(request.getRefreshToken());
+        sessionService.revokeSession(email, oldSessionHash, null);
+        sessionService.createSession(user, newRefreshToken, newTokenResult.jti(), httpRequest);
+
+        log.debug("Token refreshed for: {}", email);
+
+        return AuthResponse.success(newTokenResult.token(), newRefreshToken, jwtExpiration);
+    }
+
+    @Override
+    @Transactional
+    public void logout(String refreshToken, String userEmail) {
+        String sessionHash = sessionService.hashToken(refreshToken);
+        sessionService.revokeSession(userEmail, sessionHash, null);
+        log.info("User logged out: {}", userEmail);
+    }
+
+    @Override
+    @Transactional
+    public void logoutAll(String userEmail) {
+        sessionService.revokeAllSessions(userEmail);
+        log.info("All sessions logged out for: {}", userEmail);
     }
 
     @Override
@@ -176,6 +218,7 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    @Transactional
     public void resetPassword(PasswordResetRequest request) {
         if (!request.getNewPassword().equals(request.getConfirmPassword())) {
             throw new BadCredentialsException("Passwords do not match");
@@ -193,6 +236,9 @@ public class AuthServiceImpl implements AuthService {
         user.setResetPasswordToken(null);
         user.setResetPasswordTokenExpiredAt(null);
         userRepository.save(user);
+
+        // 보안: 비밀번호 변경 시 모든 세션 무효화
+        sessionService.revokeAllSessions(user.getEmail());
 
         log.info("Password reset for: {}", user.getEmail());
     }

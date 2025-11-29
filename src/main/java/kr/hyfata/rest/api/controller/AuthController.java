@@ -1,5 +1,6 @@
 package kr.hyfata.rest.api.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import kr.hyfata.rest.api.dto.*;
 import kr.hyfata.rest.api.service.AuthService;
 import lombok.RequiredArgsConstructor;
@@ -23,9 +24,6 @@ public class AuthController {
     /**
      * 회원가입
      * POST /api/auth/register
-     *
-     * 새로운 사용자 계정을 생성합니다.
-     * OAuth 2.0 로그인 전에 먼저 이 엔드포인트로 회원가입을 완료해야 합니다.
      */
     @PostMapping("/register")
     public ResponseEntity<Map<String, String>> register(@RequestBody RegisterRequest request) {
@@ -43,17 +41,16 @@ public class AuthController {
     }
 
     /**
-     * 로그인 (레거시 - OAuth 2.0 대신 /oauth 엔드포인트 사용 권장)
+     * 로그인
      * POST /api/auth/login
-     *
-     * ⚠️ DEPRECATED: 이 엔드포인트는 레거시 API입니다.
-     * OAuth 2.0 Authorization Code Flow를 사용하세요.
      */
     @PostMapping("/login")
-    public ResponseEntity<AuthResponse> login(@RequestBody AuthRequest request) {
-        log.warn("⚠️ DEPRECATED: Direct /api/auth/login is called. Please use OAuth 2.0 flow instead (GET /oauth/authorize)");
+    public ResponseEntity<AuthResponse> login(
+            @RequestBody AuthRequest request,
+            HttpServletRequest httpRequest
+    ) {
         try {
-            AuthResponse response = authService.login(request);
+            AuthResponse response = authService.login(request, httpRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Login error: {}", e.getMessage());
@@ -69,9 +66,12 @@ public class AuthController {
      * POST /api/auth/verify-2fa
      */
     @PostMapping("/verify-2fa")
-    public ResponseEntity<AuthResponse> verifyTwoFactor(@RequestBody TwoFactorRequest request) {
+    public ResponseEntity<AuthResponse> verifyTwoFactor(
+            @RequestBody TwoFactorRequest request,
+            HttpServletRequest httpRequest
+    ) {
         try {
-            AuthResponse response = authService.verifyTwoFactor(request);
+            AuthResponse response = authService.verifyTwoFactor(request, httpRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("2FA verification error: {}", e.getMessage());
@@ -87,9 +87,12 @@ public class AuthController {
      * POST /api/auth/refresh
      */
     @PostMapping("/refresh")
-    public ResponseEntity<AuthResponse> refreshToken(@RequestBody RefreshTokenRequest request) {
+    public ResponseEntity<AuthResponse> refreshToken(
+            @RequestBody RefreshTokenRequest request,
+            HttpServletRequest httpRequest
+    ) {
         try {
-            AuthResponse response = authService.refreshToken(request);
+            AuthResponse response = authService.refreshToken(request, httpRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Token refresh error: {}", e.getMessage());
@@ -97,6 +100,35 @@ public class AuthController {
                     .body(AuthResponse.builder()
                             .message(e.getMessage())
                             .build());
+        }
+    }
+
+    /**
+     * 로그아웃
+     * POST /api/auth/logout
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Map<String, String>> logout(
+            @RequestBody LogoutRequest request,
+            Authentication authentication
+    ) {
+        try {
+            String email = authentication.getName();
+
+            if (Boolean.TRUE.equals(request.getLogoutAll())) {
+                authService.logoutAll(email);
+            } else {
+                authService.logout(request.getRefreshToken(), email);
+            }
+
+            Map<String, String> response = new HashMap<>();
+            response.put("message", "Logged out successfully");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Logout error: {}", e.getMessage());
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
         }
     }
 
