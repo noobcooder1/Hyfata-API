@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import kr.hyfata.rest.api.entity.User;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -13,6 +14,7 @@ import javax.crypto.SecretKey;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Component
@@ -22,10 +24,12 @@ public class JwtUtil {
     @Value("${jwt.secret:hyfata-secret-key-min-32-characters-required-for-security}")
     private String jwtSecret;
 
-    @Value("${jwt.expiration:86400000}") // 24 hours
+    @Getter
+    @Value("${jwt.expiration:900000}") // 15 minutes
     private long jwtExpiration;
 
-    @Value("${jwt.refresh-expiration:604800000}") // 7 days
+    @Getter
+    @Value("${jwt.refresh-expiration:1209600000}") // 14 days
     private long refreshTokenExpiration;
 
     private SecretKey getSigningKey() {
@@ -33,18 +37,33 @@ public class JwtUtil {
     }
 
     /**
-     * Access Token 생성
+     * Access Token 생성 결과 (토큰 + JTI)
      */
-    public String generateAccessToken(UserDetails userDetails) {
+    public record TokenResult(String token, String jti) {}
+
+    /**
+     * Access Token 생성 (JTI 포함)
+     */
+    public TokenResult generateAccessTokenWithJti(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
 
-        // UserDetails가 User 엔티티인 경우 실제 email 사용
         String email = (userDetails instanceof User)
             ? ((User) userDetails).getEmail()
             : userDetails.getUsername();
 
+        String jti = UUID.randomUUID().toString().replace("-", "");
         claims.put("email", email);
-        return createToken(claims, email, jwtExpiration);
+        claims.put("jti", jti);
+
+        String token = createToken(claims, email, jwtExpiration);
+        return new TokenResult(token, jti);
+    }
+
+    /**
+     * Access Token 생성 (기존 호환성 유지)
+     */
+    public String generateAccessToken(UserDetails userDetails) {
+        return generateAccessTokenWithJti(userDetails).token();
     }
 
     /**
@@ -53,7 +72,6 @@ public class JwtUtil {
     public String generateRefreshToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
 
-        // UserDetails가 User 엔티티인 경우 실제 email 사용
         String email = (userDetails instanceof User)
             ? ((User) userDetails).getEmail()
             : userDetails.getUsername();
@@ -85,10 +103,36 @@ public class JwtUtil {
     }
 
     /**
+     * 토큰에서 JTI 추출
+     */
+    public String extractJti(String token) {
+        try {
+            Claims claims = extractAllClaims(token);
+            return claims.get("jti", String.class);
+        } catch (Exception e) {
+            log.error("Error extracting JTI: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * 토큰에서 만료 날짜 추출
      */
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
+    }
+
+    /**
+     * 토큰의 남은 유효 시간(초) 반환
+     */
+    public long getRemainingSeconds(String token) {
+        try {
+            Date expiration = extractExpiration(token);
+            long remaining = (expiration.getTime() - System.currentTimeMillis()) / 1000;
+            return Math.max(0, remaining);
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     /**
