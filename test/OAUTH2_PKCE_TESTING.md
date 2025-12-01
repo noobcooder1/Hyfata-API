@@ -49,11 +49,14 @@ cd /Users/najoan/IdeaProjects/Hyfata-RestAPI
    ├─ 3-1. Generate Code Challenge
    ├─ 3-2. Authorization Request
    ├─ 3-3. Login (Authorization Code 획득)
-   └─ 3-4. Token Exchange (Access Token 획득)
+   └─ 3-4. Token Exchange (Access Token 획득 + 세션 생성)
 
-🔹 Section 4: Token Usage
-   ├─ 4-1. Refresh Token (토큰 갱신)
-   └─ 4-2. Protected Resource Access (선택사항)
+🔹 Section 4: Token Usage & Session Management
+   ├─ 4-1. OAuth Refresh Token (토큰 갱신 + 세션 로테이션)
+   ├─ 4-2. OAuth Logout (로그아웃 + 세션 무효화)
+   ├─ 4-3. Protected Resource Access (선택사항)
+   ├─ 4-4. Get Active Sessions (세션 목록 조회)
+   └─ 4-5. Revoke Session (원격 로그아웃)
 
 🔹 Section 5: Error Tests
    └─ PKCE 관련 에러 케이스
@@ -290,29 +293,36 @@ code_verifier={{code_verifier}}
 
 ## Section 4️⃣: Token Usage - 토큰 사용
 
-### 4-1. Refresh Access Token
+### 4-1. Refresh Access Token (OAuth 방식)
 
-**Postman Request**: `4-1. Refresh Token`
+**Postman Request**: `4-1. OAuth Refresh Token`
 
 **Method**: POST
-**URL**: `{{base_url}}/api/auth/refresh`
-**Content-Type**: `application/json`
+**URL**: `{{base_url}}/oauth/token`
+**Content-Type**: `application/x-www-form-urlencoded`
 **Body**:
-```json
-{
-  "refreshToken": "{{refresh_token}}"
-}
+```
+grant_type=refresh_token
+refresh_token={{refresh_token}}
+client_id={{client_id}}
+client_secret={{client_secret}}
 ```
 
 **Expected Response** (200 OK):
 ```json
 {
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "tokenType": "Bearer",
-  "expiresIn": 86400000
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 86400000,
+  "scope": "user:email user:profile"
 }
 ```
+
+**중요**:
+- **토큰 로테이션**: 갱신 시 새로운 Refresh Token도 발급됨 (기존 토큰 무효화)
+- **세션 관리**: 자동으로 새 세션 생성, 기존 세션 무효화
+- 갱신 후 반드시 새로운 `access_token`과 `refresh_token`으로 업데이트
 
 **언제 사용하나?**
 - Access Token이 만료되었을 때 (24시간 후)
@@ -320,7 +330,41 @@ code_verifier={{code_verifier}}
 
 ---
 
-### 4-2. Protected Resource Access (선택사항)
+### 4-2. OAuth Logout (로그아웃)
+
+**Postman Request**: `4-2. OAuth Logout`
+
+**Method**: POST
+**URL**: `{{base_url}}/oauth/logout`
+**Headers**:
+```
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+```
+**Body**:
+```json
+{
+  "refresh_token": "{{refresh_token}}"
+}
+```
+
+**Expected Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+```
+
+**중요**:
+- **인증 필요**: 반드시 유효한 Access Token으로 인증 필요
+- **세션 무효화**: 해당 세션이 즉시 무효화됨
+- **토큰 블랙리스트**: Access Token의 JTI가 Redis 블랙리스트에 등록됨
+- 로그아웃 후에는 해당 토큰으로 민감한 API 접근 불가
+
+---
+
+### 4-3. Protected Resource Access (선택사항)
 
 보호된 리소스에 접근하려면:
 
@@ -333,6 +377,60 @@ Authorization: Bearer {{access_token}}
 **Postman에서**:
 - Authorization 탭 → Type: Bearer Token
 - Token: `{{access_token}}`
+
+---
+
+### 4-4. 세션 목록 조회
+
+**Postman Request**: `4-4. Get Active Sessions`
+
+**Method**: GET
+**URL**: `{{base_url}}/api/sessions`
+**Headers**:
+```
+Authorization: Bearer {{access_token}}
+```
+
+**Expected Response** (200 OK):
+```json
+{
+  "sessions": [
+    {
+      "sessionId": "abc123def456...",
+      "deviceType": "Desktop",
+      "deviceName": "Chrome on Windows",
+      "ipAddress": "192.168.1.100",
+      "location": "Seoul, South Korea",
+      "lastActiveAt": "2024-01-15T10:30:00",
+      "createdAt": "2024-01-15T09:00:00",
+      "isCurrent": true
+    }
+  ],
+  "totalCount": 1,
+  "maxAllowed": 5
+}
+```
+
+---
+
+### 4-5. 특정 세션 무효화 (원격 로그아웃)
+
+**Postman Request**: `4-5. Revoke Session`
+
+**Method**: DELETE
+**URL**: `{{base_url}}/api/sessions/{sessionId}`
+**Headers**:
+```
+Authorization: Bearer {{access_token}}
+```
+
+**Expected Response** (200 OK):
+```json
+{
+  "success": true,
+  "message": "Session revoked successfully"
+}
+```
 
 ---
 
@@ -435,6 +533,7 @@ Token Exchange에서 `code_verifier`를 빼고 시도:
 
 ### 시작 전:
 - [ ] 애플리케이션 실행 (`./gradlew bootRun`)
+- [ ] Redis 서버 실행 (세션 블랙리스트용)
 - [ ] Postman Collection import
 - [ ] DB 접근 가능 (이메일 검증용)
 
@@ -445,8 +544,11 @@ Token Exchange에서 `code_verifier`를 빼고 시도:
 - [ ] Section 3-1: Code Challenge 생성
 - [ ] Section 3-2: Authorization Request
 - [ ] Section 3-3: Login (Authorization Code 획득)
-- [ ] Section 3-4: Token Exchange (Access Token 획득)
-- [ ] Section 4-1: Refresh Token 테스트
+- [ ] Section 3-4: Token Exchange (Access Token 획득 + 세션 생성)
+- [ ] Section 4-1: OAuth Refresh Token 테스트
+- [ ] Section 4-2: OAuth Logout 테스트
+- [ ] Section 4-4: 세션 목록 조회
+- [ ] Section 4-5: 원격 로그아웃 테스트
 - [ ] Section 5: Error Tests
 
 ---

@@ -1,5 +1,6 @@
 package kr.hyfata.rest.api.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import kr.hyfata.rest.api.dto.OAuthTokenResponse;
 import kr.hyfata.rest.api.entity.User;
 import kr.hyfata.rest.api.repository.UserRepository;
@@ -10,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -197,23 +199,29 @@ public class OAuthController {
     }
 
     /**
-     * 3단계: Authorization Code를 Token으로 교환
+     * 3단계: Authorization Code를 Token으로 교환 또는 Refresh Token으로 갱신
      * POST /oauth/token
      *
-     * 요청 (PKCE 없음, application/x-www-form-urlencoded):
+     * 요청 - Authorization Code (PKCE 없음, application/x-www-form-urlencoded):
      * grant_type=authorization_code&
      * code=xxx&
      * client_id=client_001&
      * client_secret=secret_001&
      * redirect_uri=https://site1.com/callback
      *
-     * 요청 (PKCE 포함, application/x-www-form-urlencoded):
+     * 요청 - Authorization Code (PKCE 포함, application/x-www-form-urlencoded):
      * grant_type=authorization_code&
      * code=xxx&
      * client_id=client_001&
      * client_secret=secret_001&
      * redirect_uri=https://site1.com/callback&
      * code_verifier=xxxxxx...
+     *
+     * 요청 - Refresh Token:
+     * grant_type=refresh_token&
+     * refresh_token=xxx&
+     * client_id=client_001&
+     * client_secret=secret_001
      *
      * 응답:
      * {
@@ -227,34 +235,50 @@ public class OAuthController {
     @PostMapping("/token")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> token(
-            @RequestParam(defaultValue = "authorization_code") String grant_type,
+            @RequestParam String grant_type,
             @RequestParam(required = false) String code,
             @RequestParam String client_id,
             @RequestParam String client_secret,
-            @RequestParam String redirect_uri,
-            @RequestParam(required = false) String code_verifier) {
+            @RequestParam(required = false) String redirect_uri,
+            @RequestParam(required = false) String code_verifier,
+            @RequestParam(required = false) String refresh_token,
+            HttpServletRequest request) {
 
         try {
-            // grant_type 검증
-            if (!"authorization_code".equals(grant_type)) {
-                throw new BadCredentialsException("Unsupported grant_type. Only 'authorization_code' is supported");
-            }
-
-            // code 검증
-            if (code == null || code.isEmpty()) {
-                throw new BadCredentialsException("Authorization code is required");
-            }
-
-            // Authorization Code를 Token으로 교환 (PKCE code_verifier 포함)
             OAuthTokenResponse tokenResponse;
-            if (code_verifier != null && !code_verifier.isEmpty()) {
-                tokenResponse = oAuthService.exchangeCodeForToken(
-                        code, client_id, client_secret, redirect_uri, code_verifier);
-                log.info("Token issued with PKCE: client_id={}", client_id);
+
+            if ("authorization_code".equals(grant_type)) {
+                // Authorization Code Grant
+                if (code == null || code.isEmpty()) {
+                    throw new BadCredentialsException("Authorization code is required");
+                }
+                if (redirect_uri == null || redirect_uri.isEmpty()) {
+                    throw new BadCredentialsException("redirect_uri is required for authorization_code grant");
+                }
+
+                // Authorization Code를 Token으로 교환 (PKCE code_verifier 포함, 세션 생성)
+                if (code_verifier != null && !code_verifier.isEmpty()) {
+                    tokenResponse = oAuthService.exchangeCodeForToken(
+                            code, client_id, client_secret, redirect_uri, code_verifier, request);
+                    log.info("Token issued with PKCE and session: client_id={}", client_id);
+                } else {
+                    tokenResponse = oAuthService.exchangeCodeForToken(
+                            code, client_id, client_secret, redirect_uri, null, request);
+                    log.info("Token issued with session: client_id={}", client_id);
+                }
+
+            } else if ("refresh_token".equals(grant_type)) {
+                // Refresh Token Grant
+                if (refresh_token == null || refresh_token.isEmpty()) {
+                    throw new BadCredentialsException("refresh_token is required");
+                }
+
+                tokenResponse = oAuthService.refreshAccessToken(
+                        refresh_token, client_id, client_secret, request);
+                log.info("Token refreshed: client_id={}", client_id);
+
             } else {
-                tokenResponse = oAuthService.exchangeCodeForToken(
-                        code, client_id, client_secret, redirect_uri);
-                log.info("Token issued: client_id={}", client_id);
+                throw new BadCredentialsException("Unsupported grant_type. Supported: 'authorization_code', 'refresh_token'");
             }
 
             Map<String, Object> response = new HashMap<>();
@@ -277,6 +301,64 @@ public class OAuthController {
             Map<String, Object> error = new HashMap<>();
             error.put("error", "server_error");
             error.put("error_description", "Token exchange failed");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+        }
+    }
+
+    /**
+     * OAuth 로그아웃 (세션 무효화 및 토큰 블랙리스트)
+     * POST /oauth/logout
+     *
+     * 요청:
+     * {
+     *   "refresh_token": "eyJhbGc..."
+     * }
+     *
+     * 응답:
+     * {
+     *   "success": true,
+     *   "message": "Logged out successfully"
+     * }
+     */
+    @PostMapping("/logout")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> logout(
+            @RequestParam(required = false) String refresh_token,
+            @RequestBody(required = false) Map<String, String> body,
+            Authentication authentication) {
+
+        try {
+            String email = authentication.getName();
+
+            // refresh_token은 요청 파라미터 또는 body에서 가져옴
+            String token = refresh_token;
+            if ((token == null || token.isEmpty()) && body != null) {
+                token = body.get("refresh_token");
+            }
+
+            if (token == null || token.isEmpty()) {
+                throw new BadCredentialsException("refresh_token is required");
+            }
+
+            oAuthService.logout(email, token);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "Logged out successfully");
+
+            return ResponseEntity.ok(response);
+
+        } catch (BadCredentialsException e) {
+            log.warn("Logout error: {}", e.getMessage());
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+        } catch (Exception e) {
+            log.error("Logout error: {}", e.getMessage(), e);
+            Map<String, Object> error = new HashMap<>();
+            error.put("success", false);
+            error.put("error", "Logout failed");
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
         }
     }

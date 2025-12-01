@@ -397,10 +397,10 @@
       ]
     },
     {
-      "name": "Section 4: Token Usage",
+      "name": "Section 4: Token Usage & Session Management",
       "item": [
         {
-          "name": "4-1. Refresh Token",
+          "name": "4-1. OAuth Refresh Token",
           "event": [
             {
               "listen": "test",
@@ -412,16 +412,80 @@
                   "",
                   "pm.test('✅ New tokens received', function() {",
                   "  const response = pm.response.json();",
-                  "  pm.expect(response).to.have.property('accessToken');",
-                  "  pm.expect(response).to.have.property('refreshToken');",
+                  "  pm.expect(response).to.have.property('access_token');",
+                  "  pm.expect(response).to.have.property('refresh_token');",
+                  "  pm.expect(response).to.have.property('token_type');",
                   "});",
                   "",
                   "// Update tokens",
                   "const response = pm.response.json();",
-                  "pm.collectionVariables.set('access_token', response.accessToken);",
-                  "pm.collectionVariables.set('refresh_token', response.refreshToken);",
+                  "pm.collectionVariables.set('access_token', response.access_token);",
+                  "pm.collectionVariables.set('refresh_token', response.refresh_token);",
                   "",
-                  "console.log('✅ Tokens refreshed successfully');"
+                  "console.log('✅ Tokens refreshed successfully (with session rotation)');",
+                  "console.log('New Access Token: ' + response.access_token.substring(0, 30) + '...');",
+                  "console.log('New Refresh Token: ' + response.refresh_token.substring(0, 30) + '...');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "grant_type",
+                  "value": "refresh_token"
+                },
+                {
+                  "key": "refresh_token",
+                  "value": "{{refresh_token}}"
+                },
+                {
+                  "key": "client_id",
+                  "value": "{{client_id}}"
+                },
+                {
+                  "key": "client_secret",
+                  "value": "{{client_secret}}"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/oauth/token",
+              "host": ["{{base_url}}"],
+              "path": ["oauth", "token"]
+            },
+            "description": "🔄 Step 4-1: OAuth Refresh Token으로 새 Access Token 발급\n\ngrant_type=refresh_token을 사용합니다.\n\n⚠️  중요:\n- 토큰 로테이션: 새 Refresh Token도 발급됨 (기존 무효화)\n- 세션 관리: 자동으로 새 세션 생성\n- 반드시 새 토큰으로 업데이트 필요"
+          },
+          "response": []
+        },
+        {
+          "name": "4-2. OAuth Logout",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('✅ Status code is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('✅ Logout successful', function() {",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.equal(true);",
+                  "  pm.expect(response.message).to.equal('Logged out successfully');",
+                  "});",
+                  "",
+                  "console.log('✅ OAuth Logout successful');",
+                  "console.log('⚠️  Session invalidated, tokens blacklisted');"
                 ]
               }
             }
@@ -432,18 +496,104 @@
               {
                 "key": "Content-Type",
                 "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
               }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
             },
             "url": {
-              "raw": "{{base_url}}/api/auth/refresh",
+              "raw": "{{base_url}}/oauth/logout",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "refresh"]
+              "path": ["oauth", "logout"]
             },
-            "description": "🔄 Step 4-1: Refresh Token으로 새 Access Token 발급\n\nAccess Token이 만료되었을 때 사용합니다.\n\n언제 사용?\n- Access Token 만료 (24시간 후)\n- 새로운 Access Token + Refresh Token 획득"
+            "description": "🚪 Step 4-2: OAuth 로그아웃\n\n세션을 무효화하고 토큰을 블랙리스트에 등록합니다.\n\n⚠️  중요:\n- 인증 필요: Authorization 헤더에 Access Token\n- 세션 무효화: 해당 세션 즉시 무효화\n- 토큰 블랙리스트: JTI가 Redis에 등록됨"
+          },
+          "response": []
+        },
+        {
+          "name": "4-3. Get Active Sessions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('✅ Status code is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('✅ Sessions list received', function() {",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response).to.have.property('sessions');",
+                  "  pm.expect(response).to.have.property('totalCount');",
+                  "});",
+                  "",
+                  "const response = pm.response.json();",
+                  "console.log('✅ Active Sessions: ' + response.totalCount);",
+                  "if (response.sessions && response.sessions.length > 0) {",
+                  "  pm.collectionVariables.set('session_id', response.sessions[0].sessionId);",
+                  "  console.log('First Session ID saved for revoke test');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions"]
+            },
+            "description": "📋 Step 4-3: 활성 세션 목록 조회\n\n현재 로그인된 모든 기기/세션을 조회합니다.\n\n응답 포함 정보:\n- 세션 ID\n- 기기 종류 (Desktop, Mobile 등)\n- IP 주소\n- 위치\n- 마지막 활동 시간\n- 현재 세션 여부"
+          },
+          "response": []
+        },
+        {
+          "name": "4-4. Revoke Session (Remote Logout)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('✅ Status code is 200', function() {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('✅ Session revoked', function() {",
+                  "  const response = pm.response.json();",
+                  "  pm.expect(response.success).to.equal(true);",
+                  "});",
+                  "",
+                  "console.log('✅ Session revoked successfully');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/sessions/{{session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sessions", "{{session_id}}"]
+            },
+            "description": "🔒 Step 4-4: 특정 세션 무효화 (원격 로그아웃)\n\n다른 기기의 세션을 원격으로 종료합니다.\n\n⚠️  주의:\n- session_id는 4-3에서 조회한 값 사용\n- 현재 세션이 아닌 다른 세션만 무효화 가능"
           },
           "response": []
         }
@@ -716,6 +866,11 @@
     },
     {
       "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "session_id",
       "value": "",
       "type": "string"
     }

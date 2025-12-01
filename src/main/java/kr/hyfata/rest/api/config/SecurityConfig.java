@@ -43,6 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/enable-2fa").authenticated()
                         .requestMatchers("/api/auth/disable-2fa").authenticated()
                         .requestMatchers("/api/sessions/**").authenticated()
+                        .requestMatchers("/oauth/logout").authenticated()
                         // 공개 엔드포인트
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/public/**").permitAll()

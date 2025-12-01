@@ -16,6 +16,7 @@ public class AuthResponse {
     private Long expiresIn;
     private Boolean twoFactorRequired;
     private String message;
+    private String deprecationWarning;
 
     public static AuthResponse success(String accessToken, String refreshToken, Long expiresIn) {
         return AuthResponse.builder()

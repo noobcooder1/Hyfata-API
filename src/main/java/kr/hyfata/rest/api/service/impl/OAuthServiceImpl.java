@@ -1,5 +1,6 @@
 package kr.hyfata.rest.api.service.impl;
 
+import jakarta.servlet.http.HttpServletRequest;
 import kr.hyfata.rest.api.dto.OAuthTokenResponse;
 import kr.hyfata.rest.api.entity.AuthorizationCode;
 import kr.hyfata.rest.api.entity.Client;
@@ -7,7 +8,10 @@ import kr.hyfata.rest.api.entity.User;
 import kr.hyfata.rest.api.repository.AuthorizationCodeRepository;
 import kr.hyfata.rest.api.repository.ClientRepository;
 import kr.hyfata.rest.api.repository.UserRepository;
+import kr.hyfata.rest.api.repository.UserSessionRepository;
 import kr.hyfata.rest.api.service.OAuthService;
+import kr.hyfata.rest.api.service.SessionService;
+import kr.hyfata.rest.api.service.TokenBlacklistService;
 import kr.hyfata.rest.api.util.JwtUtil;
 import kr.hyfata.rest.api.util.PkceUtil;
 import kr.hyfata.rest.api.util.TokenGenerator;
@@ -28,10 +32,13 @@ public class OAuthServiceImpl implements OAuthService {
     private final AuthorizationCodeRepository authorizationCodeRepository;
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
+    private final UserSessionRepository userSessionRepository;
     private final JwtUtil jwtUtil;
     private final TokenGenerator tokenGenerator;
     private final PkceUtil pkceUtil;
     private final PasswordEncoder passwordEncoder;
+    private final SessionService sessionService;
+    private final TokenBlacklistService tokenBlacklistService;
 
     @Override
     public String generateAuthorizationCode(String clientId, String email, String redirectUri, String state) {
@@ -206,5 +213,176 @@ public class OAuthServiceImpl implements OAuthService {
         return authorizationCodeRepository.findByCode(code)
                 .map(authCode -> authCode.getState() != null && authCode.getState().equals(state))
                 .orElse(false);
+    }
+
+    @Override
+    public OAuthTokenResponse exchangeCodeForToken(String code, String clientId, String clientSecret,
+                                                   String redirectUri, String codeVerifier, HttpServletRequest request) {
+        // 1. Authorization Code 검증
+        AuthorizationCode authCode = authorizationCodeRepository.findByCodeAndClientId(code, clientId)
+                .orElseThrow(() -> new BadCredentialsException("Invalid authorization code"));
+
+        // 2. 코드 만료 여부 확인
+        if (LocalDateTime.now().isAfter(authCode.getExpiresAt())) {
+            authorizationCodeRepository.delete(authCode);
+            throw new BadCredentialsException("Authorization code expired");
+        }
+
+        // 3. 코드 사용 여부 확인 (한 번만 사용 가능)
+        if (authCode.getUsed()) {
+            throw new BadCredentialsException("Authorization code already used");
+        }
+
+        // 4. Redirect URI 검증
+        if (!authCode.getRedirectUri().equals(redirectUri)) {
+            throw new BadCredentialsException("Redirect URI mismatch");
+        }
+
+        // 5. PKCE 검증 (code_challenge가 저장되어 있으면 code_verifier 필수)
+        if (authCode.getCodeChallenge() != null && !authCode.getCodeChallenge().isEmpty()) {
+            if (codeVerifier == null || codeVerifier.isEmpty()) {
+                throw new BadCredentialsException("code_verifier is required for PKCE flow");
+            }
+
+            // code_verifier 유효성 검증
+            if (!pkceUtil.isValidCodeVerifier(codeVerifier)) {
+                throw new BadCredentialsException("Invalid code_verifier format");
+            }
+
+            // code_verifier와 code_challenge 검증
+            if (!pkceUtil.verifyCodeChallenge(codeVerifier, authCode.getCodeChallenge())) {
+                log.warn("PKCE verification failed: clientId={}, email={}", clientId, authCode.getEmail());
+                throw new BadCredentialsException("code_verifier verification failed");
+            }
+
+            log.debug("PKCE verification successful: clientId={}, email={}", clientId, authCode.getEmail());
+        }
+
+        // 6. Client Secret 검증
+        Client client = clientRepository.findByClientId(clientId)
+                .orElseThrow(() -> new BadCredentialsException("Invalid client credentials"));
+
+        // BCrypt로 저장된 clientSecret과 비교
+        if (!passwordEncoder.matches(clientSecret, client.getClientSecret())) {
+            throw new BadCredentialsException("Invalid client credentials");
+        }
+
+        if (!client.getEnabled()) {
+            throw new BadCredentialsException("Client is disabled");
+        }
+
+        // 7. 사용자 조회
+        User user = userRepository.findByEmail(authCode.getEmail())
+                .orElseThrow(() -> new BadCredentialsException("User not found"));
+
+        // 8. 코드 사용 표시
+        authCode.setUsed(true);
+        authorizationCodeRepository.save(authCode);
+
+        // 9. 토큰 생성 (JTI 포함)
+        JwtUtil.TokenResult accessTokenResult = jwtUtil.generateAccessTokenWithJti(user);
+        String accessToken = accessTokenResult.token();
+        String jti = accessTokenResult.jti();
+        String refreshToken = jwtUtil.generateRefreshToken(user);
+        long expiresIn = 86400000;  // 24시간
+
+        // 10. 세션 생성
+        sessionService.createSession(user, refreshToken, jti, request);
+
+        if (authCode.getCodeChallenge() != null && !authCode.getCodeChallenge().isEmpty()) {
+            log.info("Authorization code exchanged for tokens with session (PKCE): clientId={}, email={}", clientId, authCode.getEmail());
+        } else {
+            log.info("Authorization code exchanged for tokens with session: clientId={}, email={}", clientId, authCode.getEmail());
+        }
+
+        return OAuthTokenResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(expiresIn)
+                .scope("user:email user:profile")
+                .build();
+    }
+
+    @Override
+    public OAuthTokenResponse refreshAccessToken(String refreshToken, String clientId, String clientSecret,
+                                                 HttpServletRequest request) {
+        // 1. Refresh Token 유효성 검증 (JWT 서명)
+        if (!jwtUtil.validateToken(refreshToken)) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
+
+        // 2. Client 검증
+        Client client = clientRepository.findByClientId(clientId)
+                .orElseThrow(() -> new BadCredentialsException("Invalid client credentials"));
+
+        if (!passwordEncoder.matches(clientSecret, client.getClientSecret())) {
+            throw new BadCredentialsException("Invalid client credentials");
+        }
+
+        if (!client.getEnabled()) {
+            throw new BadCredentialsException("Client is disabled");
+        }
+
+        // 3. 세션 유효성 검증 (DB)
+        if (!sessionService.validateSession(refreshToken)) {
+            throw new BadCredentialsException("Session has been revoked");
+        }
+
+        // 4. 사용자 조회
+        String email = jwtUtil.extractEmail(refreshToken);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BadCredentialsException("User not found"));
+
+        // 5. 기존 세션에서 이전 Access Token JTI 가져와서 블랙리스트 등록
+        String oldSessionHash = sessionService.hashToken(refreshToken);
+        userSessionRepository.findById(oldSessionHash).ifPresent(session -> {
+            if (session.getAccessTokenJti() != null) {
+                // Access Token 남은 만료 시간 계산 (대략 15분으로 설정)
+                tokenBlacklistService.blacklistJti(session.getAccessTokenJti(), 900);
+            }
+        });
+
+        // 6. 새 토큰 생성 (토큰 로테이션)
+        JwtUtil.TokenResult newAccessTokenResult = jwtUtil.generateAccessTokenWithJti(user);
+        String newAccessToken = newAccessTokenResult.token();
+        String newJti = newAccessTokenResult.jti();
+        String newRefreshToken = jwtUtil.generateRefreshToken(user);
+        long expiresIn = 86400000;  // 24시간
+
+        // 7. 기존 세션 무효화 (refresh token 해시로 찾아서)
+        sessionService.revokeSession(email, oldSessionHash, null);
+
+        // 8. 새 세션 생성
+        sessionService.createSession(user, newRefreshToken, newJti, request);
+
+        log.info("OAuth token refreshed with session rotation: email={}, clientId={}", email, clientId);
+
+        return OAuthTokenResponse.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshToken)
+                .tokenType("Bearer")
+                .expiresIn(expiresIn)
+                .scope("user:email user:profile")
+                .build();
+    }
+
+    @Override
+    public void logout(String email, String refreshToken) {
+        // 1. 세션 찾기
+        String sessionHash = sessionService.hashToken(refreshToken);
+
+        // 2. 해당 세션의 Access Token JTI를 블랙리스트에 추가
+        userSessionRepository.findById(sessionHash).ifPresent(session -> {
+            if (session.getAccessTokenJti() != null) {
+                // Access Token 남은 만료 시간 계산 (최대 24시간)
+                tokenBlacklistService.blacklistJti(session.getAccessTokenJti(), 86400);
+            }
+        });
+
+        // 3. 세션 무효화
+        sessionService.revokeSession(email, sessionHash, null);
+
+        log.info("OAuth logout successful: email={}", email);
     }
 }

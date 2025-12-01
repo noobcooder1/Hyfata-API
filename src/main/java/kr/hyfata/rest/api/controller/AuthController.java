@@ -41,9 +41,14 @@ public class AuthController {
     }
 
     /**
-     * 로그인
+     * 로그인 (Deprecated)
      * POST /api/auth/login
+     *
+     * @deprecated 이 엔드포인트는 보안상의 이유로 권장되지 않습니다.
+     *             OAuth 2.0 플로우(/oauth/authorize)를 사용하세요.
+     *             PKCE를 지원하여 더 안전한 인증을 제공합니다.
      */
+    @Deprecated
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(
             @RequestBody AuthRequest request,
@@ -51,7 +56,11 @@ public class AuthController {
     ) {
         try {
             AuthResponse response = authService.login(request, httpRequest);
-            return ResponseEntity.ok(response);
+            response.setDeprecationWarning("This endpoint is deprecated. Please use OAuth 2.0 (/oauth/authorize) for better security.");
+            return ResponseEntity.ok()
+                    .header("Deprecation", "true")
+                    .header("Link", "</oauth/authorize>; rel=\"successor-version\"")
+                    .body(response);
         } catch (Exception e) {
             log.error("Login error: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
