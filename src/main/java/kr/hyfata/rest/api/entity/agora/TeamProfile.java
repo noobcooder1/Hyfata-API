@@ -7,19 +7,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "agora_user_profiles",
-        indexes = {
-                @Index(name = "idx_agora_profiles_agora_id", columnList = "agora_id")
-        })
+@Table(name = "team_profiles")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class AgoraUserProfile {
+public class TeamProfile {
 
     @Id
     private Long id;
@@ -29,26 +25,11 @@ public class AgoraUserProfile {
     @JoinColumn(name = "id")
     private User user;
 
-    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private TeamProfile teamProfile;
-
-    @Column(unique = true, nullable = false, length = 50)
-    private String agoraId;
-
     @Column(nullable = false, length = 100)
     private String displayName;
 
     @Column(columnDefinition = "TEXT")
     private String profileImage;
-
-    @Column(columnDefinition = "TEXT")
-    private String bio;
-
-    @Column(length = 20)
-    private String phone;
-
-    @Column
-    private LocalDate birthday;
 
     @Column(nullable = false, updatable = false)
     @Builder.Default
