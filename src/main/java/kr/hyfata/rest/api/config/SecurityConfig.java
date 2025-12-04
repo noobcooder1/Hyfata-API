@@ -49,6 +49,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/public/**").permitAll()
                         .requestMatchers("/api/clients/register").permitAll()
                         .requestMatchers("/oauth/**").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/").permitAll()
                         .requestMatchers("/health").permitAll()
                         // Swagger/OpenAPI 관련 엔드포인트 (필요시 추가)

@@ -2,6 +2,7 @@ package kr.hyfata.rest.api.service.agora.impl;
 
 import kr.hyfata.rest.api.dto.agora.AgoraProfileResponse;
 import kr.hyfata.rest.api.dto.agora.CreateAgoraProfileRequest;
+import kr.hyfata.rest.api.dto.agora.PublicAgoraProfileResponse;
 import kr.hyfata.rest.api.dto.agora.UpdateAgoraProfileRequest;
 import kr.hyfata.rest.api.entity.User;
 import kr.hyfata.rest.api.entity.agora.AgoraUserProfile;
@@ -10,6 +11,8 @@ import kr.hyfata.rest.api.repository.agora.AgoraUserProfileRepository;
 import kr.hyfata.rest.api.service.agora.AgoraProfileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -95,5 +98,39 @@ public class AgoraProfileServiceImpl implements AgoraProfileService {
         }
 
         return AgoraProfileResponse.from(profile);
+    }
+
+    @Override
+    public PublicAgoraProfileResponse getUserProfile(String agoraId) {
+        return agoraUserProfileRepository.findByAgoraId(agoraId)
+                .map(PublicAgoraProfileResponse::from)
+                .orElseThrow(() -> new IllegalArgumentException("User profile not found: " + agoraId));
+    }
+
+    @Override
+    public Page<PublicAgoraProfileResponse> searchUsers(String keyword, Pageable pageable) {
+        return agoraUserProfileRepository.findByAgoraIdContainingIgnoreCaseOrDisplayNameContainingIgnoreCase(
+                keyword, keyword, pageable
+        ).map(PublicAgoraProfileResponse::from);
+    }
+
+    @Override
+    @Transactional
+    public AgoraProfileResponse updateProfileImage(String userEmail, String imageUrl) {
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+
+        AgoraUserProfile profile = agoraUserProfileRepository.findById(user.getId())
+                .orElseThrow(() -> new IllegalStateException("Agora profile not found. Please create a profile first."));
+
+        profile.setProfileImage(imageUrl);
+        agoraUserProfileRepository.save(profile);
+
+        return AgoraProfileResponse.from(profile);
+    }
+
+    @Override
+    public boolean checkAgoraIdExists(String agoraId) {
+        return agoraUserProfileRepository.existsByAgoraId(agoraId);
     }
 }

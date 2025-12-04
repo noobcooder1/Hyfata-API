@@ -47,6 +47,15 @@ dependencies {
     // Session Management - SHA-256 해싱
     implementation 'commons-codec:commons-codec:1.16.0'
 
+    // WebSocket
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    // 이미지 처리 (썸네일)
+    implementation 'net.coobird:thumbnailator:0.4.20'
+
+    // Firebase (푸시 알림)
+    implementation 'com.google.firebase:firebase-admin:9.2.0'
+
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'

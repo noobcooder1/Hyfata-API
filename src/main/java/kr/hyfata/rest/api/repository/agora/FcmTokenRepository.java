@@ -29,4 +29,7 @@ public interface FcmTokenRepository extends JpaRepository<FcmToken, Long> {
     @Modifying
     @Query("DELETE FROM FcmToken f WHERE f.updatedAt < :dateTime")
     int deleteExpiredTokens(@Param("dateTime") LocalDateTime dateTime);
+
+    @Query("SELECT f.token FROM FcmToken f WHERE f.user.id = :userId")
+    List<String> findTokensByUserId(@Param("userId") Long userId);
 }

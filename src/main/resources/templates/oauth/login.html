@@ -165,11 +165,6 @@
         <!-- 에러 메시지 -->
         <div th:if="${error}" class="error-message" th:text="${error}"></div>
 
-        <!-- 경고: 이것은 데모용 간단한 로그인 -->
-        <div class="warning">
-            ⚠️ This is a simplified login form for demonstration. In production, use proper password verification.
-        </div>
-
         <!-- 로그인 폼 -->
         <form method="POST" action="/oauth/login">
             <input type="hidden" name="client_id" th:value="${client_id}">

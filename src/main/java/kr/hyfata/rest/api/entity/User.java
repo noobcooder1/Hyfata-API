@@ -82,6 +82,21 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String emailVerificationToken;
 
+    // 계정 상태
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private UserStatus status = UserStatus.ACTIVE;
+
+    // 비활성화 관련
+    private LocalDateTime deactivatedAt;
+
+    @Column(columnDefinition = "TEXT")
+    private String deactivationReason;
+
+    // 삭제 관련
+    private LocalDateTime deletedAt;
+
     // 메타데이터
     @Column(nullable = false, updatable = false)
     @Builder.Default
